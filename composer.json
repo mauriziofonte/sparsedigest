@@ -1,0 +1,67 @@
+{
+    "name": "mfonte/sparsedigest",
+    "version": "1.0.0",
+    "description": "Fast PHP file hashing library using intelligent sampling. Reads only selected portions of large binary files instead of full content, dramatically reducing I/O overhead. Automatically falls back to full-file hashing for text files. Deterministic, non-cryptographic, optimized for change detection.",
+    "keywords": [
+        "hash",
+        "hashing",
+        "file-hash",
+        "sparse-hash",
+        "sampling",
+        "fingerprint",
+        "checksum",
+        "file-integrity",
+        "change-detection",
+        "binary-files",
+        "performance",
+        "fast-hash"
+    ],
+    "homepage": "https://github.com/mauriziofonte/sparsedigest",
+    "license": "MIT",
+    "type": "library",
+    "authors": [
+        {
+            "name": "Maurizio Fonte",
+            "email": "fonte.maurizio@gmail.com",
+            "homepage": "https://www.mauriziofonte.it",
+            "role": "Developer"
+        }
+    ],
+    "minimum-stability": "stable",
+    "autoload": {
+        "psr-4": {
+            "Mfonte\\SparseDigest\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Mfonte\\SparseDigest\\Test\\": "tests/",
+            "Mfonte\\SparseDigest\\Benchmarks\\": "benchmarks/"
+        }
+    },
+    "require": {
+        "php": ">=7.2",
+        "ext-mbstring": "*"
+    },
+    "require-dev": {
+        "friendsofphp/php-cs-fixer": "^3.4",
+        "phpunit/phpunit": "^8",
+        "phpstan/phpstan": "^1.12",
+        "php-coveralls/php-coveralls": "^2.7",
+        "phpbench/phpbench": "^0.17 || ^1.2"
+    },
+    "scripts": {
+        "fix": "@php vendor/bin/php-cs-fixer fix --config=.php-cs-fixer.dist.php",
+        "test": "@php vendor/bin/phpunit --verbose --colors=always",
+        "analyse": "@php vendor/bin/phpstan analyse",
+        "bench": "@php vendor/bin/phpbench run --report=default",
+        "bench:core": "@php vendor/bin/phpbench run --group=core --report=default",
+        "bench:scaling": "@php vendor/bin/phpbench run --group=scaling --report=default",
+        "bench:algorithms": "@php vendor/bin/phpbench run --group=algorithms --report=default",
+        "bench:realworld": "@php vendor/bin/phpbench run --group=realworld --report=default",
+        "bench:internals": "@php vendor/bin/phpbench run --group=internals --report=default"
+    },
+    "suggest": {
+        "symfony/polyfill-mbstring": "Install symfony/polyfill-mbstring if your environment lacks support for the mbstring extension"
+    }
+}

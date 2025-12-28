@@ -1,0 +1,15 @@
+parameters:
+    level: 6
+    paths:
+        - %currentWorkingDirectory%/src/
+        - %currentWorkingDirectory%/tests/
+    excludePaths:
+        analyse:
+            - %currentWorkingDirectory%/tests/generate-fixtures.php
+            - %currentWorkingDirectory%/tests/Stale-Cases/
+            - %currentWorkingDirectory%/benchmarks/
+    propertyAlwaysWrittenTags:
+        - '@@set'
+    propertyAlwaysReadTags:
+        - '@@get'
+    treatPhpDocTypesAsCertain: false

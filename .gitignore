@@ -1,0 +1,9 @@
+vendor/*
+composer.lock
+clover.xml
+.php_cs.cache
+.php-cs-fixer.cache
+.phpunit.result.cache
+.phpunit.xml.dist
+scripts/analyzer.files
+scripts/analyzer.sqlite
