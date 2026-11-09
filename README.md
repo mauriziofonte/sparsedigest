@@ -1,11 +1,17 @@
 # SparseDigest
 
+[![CI](https://github.com/mauriziofonte/sparsedigest/actions/workflows/ci.yml/badge.svg)](https://github.com/mauriziofonte/sparsedigest/actions/workflows/ci.yml)
+[![Latest Stable Version](https://img.shields.io/packagist/v/mfonte/sparsedigest.svg)](https://packagist.org/packages/mfonte/sparsedigest)
+[![PHP Version](https://img.shields.io/packagist/dependency-v/mfonte/sparsedigest/php.svg)](https://packagist.org/packages/mfonte/sparsedigest)
+[![PHPStan](https://img.shields.io/badge/PHPStan-level%20max-brightgreen.svg)](phpstan.neon.dist)
+[![License](https://img.shields.io/packagist/l/mfonte/sparsedigest.svg)](LICENSE.md)
+
 **SparseDigest** is a PHP library that provides **fast** file hashing by intelligently **sampling chunks of data** instead of hashing the entire content.
 
 > [!TIP]
 > In a hurry? Go to [Installation](#installation) and [Usage Examples](#usage-examples) to get started quickly!
 
-SparseDigest is a *sort-of* [Locality-Sensitive Hashing](https://en.wikipedia.org/wiki/Locality-sensitive_hashing) algorithm for file hashing, a subset of [fuzzy hashing](https://en.wikipedia.org/wiki/Locality-sensitive_hashing#Fuzzy_hashing). Some concepts have also been taken from [Rolling Hashes](https://en.wikipedia.org/wiki/Rolling_hash).
+SparseDigest is a *sampling* hash: it fingerprints a file from a fixed, deterministic subset of its blocks. Note that it is **not** a [locality-sensitive](https://en.wikipedia.org/wiki/Locality-sensitive_hashing) or [fuzzy](https://en.wikipedia.org/wiki/Fuzzy_hashing) hash: two similar files do not produce similar digests. The output is a regular digest of the sampled bytes, so any change inside a sampled block produces a completely different hash.
 
 It's designed to be **significantly faster** than traditional full-file hashing, especially for large files, by using a technique called *sampled hashing*. This involves hashing only specific portions (samples) of the file, rather than the entire content.
 
@@ -13,7 +19,7 @@ For large files (typically binary or compressed), the sampling approach **dramat
 
 The implementation is **deterministic**. On the same input, with the same sampling parameters, it will always produce the same hash.
 
-Computational complexity is **sub-linear** relative to file size. While larger files require slightly more time (more sample offsets to compute), the time increase is much smaller than proportional to file size. For example, a 100MB file takes only ~4-5× longer than a 1MB file to hash, rather than 100× longer with full-file hashing.
+The amount of data read is proportional to `coverage`: with the default 10% coverage, SparseDigest reads about a tenth of the file, so it is still linear in file size but with a much smaller constant than a full-file hash. In the benchmarks below this translates into a 3-5× speedup over `hash_file()` for binary files larger than ~1MB.
 
 For a **detailed performance comparison** of *Sampled Hashing* vs *Native Hashing* (Full Hash), refer to [PERFORMANCE.md](PERFORMANCE.md).
 
@@ -55,7 +61,7 @@ Based on real benchmarks (PHP 8.3, PHPBench 1.2.14):
 composer require mfonte/sparsedigest
 ```
 
-A minimum **PHP 7.2** environment is required, with **mbstring** support preferred. Anyway, `symfony/polyfill-mbstring` is used to provide fallbacks for `mbstring` functions.
+A minimum **PHP 7.2** environment is required. There are no runtime dependencies.
 
 Minimal usage example:
 
@@ -68,7 +74,7 @@ $sd = SparseHasher::new('/path/to/file');
 $sparseHash = $sd->hash();
 echo "Sparse Hash: " . $sparseHash->toHex() . "\n";
 
-// Full-file hashing (reads entire file, cryptographically accurate)
+// Full-file hashing (reads the entire file)
 $fd = FileHasher::new('/path/to/file');
 $fullHash = $fd->hash();
 echo "Full Hash: " . $fullHash->toHex() . "\n";
@@ -86,10 +92,17 @@ For a complete list of examples, refer to the [Usage Examples](#usage-examples) 
 - **Full Hashing** (`FileHasher`):  
   - **hash()**: Computes a complete hash of the entire file using the fastest available algorithm.
   - **hashAs($algo)**: Same as `hash()`, but uses the specified algorithm (e.g., 'sha256', 'md5').
-  - Use this when you need cryptographic accuracy or must detect any single-byte change.
+  - Use this when you must detect any single-byte change. For integrity checks against tampering, pick a cryptographic algorithm explicitly (e.g. `hashAs('sha256')`): the default algorithm (`xxh3` where available) is fast but not cryptographic.
+
+- **Hash Result** (`HashResult`):  
+  Immutable value object returned by every hash call: `toHex()`, `toBinary()`, `toBase64()`, `equals()`, `getAlgorithm()`, `isSparse()`, `__toString()` and `jsonSerialize()`. Rebuild one from storage with `HashResult::fromHex()` or `HashResult::fromBinary()`.
 
 - **File Abstraction** (`File`):  
-  Low-level class for file operations: reading, hashing, MIME detection, and binary/text detection.
+  Low-level class for file operations: reading, hashing, MIME detection, and binary/text detection. Accepts a path, an `SplFileInfo` or an open stream.
+
+- **File comparison**: `SparseHasher::matches()` and `FileHasher::matches()` compare two files, checking sizes first.
+
+- **Command line**: `vendor/bin/sparsedigest` prints hashes in the `sha256sum` layout, or as JSON.
 
 - **Performance**:  
   Dramatically reduced I/O overhead for large binary files through intelligent sampling.
@@ -222,11 +235,17 @@ Install via Composer:
 composer require mfonte/sparsedigest
 ```
 
-Minimum requirements:
+Requirements:
 
-- **PHP 7.2** or higher
-- **mbstring** support (preferred, but not mandatory)
-- Nothing else!
+- **PHP 7.2** or higher (tested up to PHP 8.4)
+- `ext-hash` (always enabled since PHP 7.4)
+- `ext-fileinfo` (optional): only needed by `File::getMimeType()`
+
+> [!NOTE]
+> Upgrading from 1.x? See [UPGRADE.md](UPGRADE.md). Hashes computed by 1.x stay valid.
+
+> [!NOTE]
+> Empty files are supported: they always get a full (non-sparse) hash, equal to the digest of the empty string.
 
 ## Usage Examples
 
@@ -264,7 +283,7 @@ echo "Sparse Hash (MD5, 15% coverage): " . $digest->toHex() . "\n";
 
 ### Full File Hashing
 
-For cryptographic accuracy or when you need to detect any single-byte change, use `FileHasher`:
+When you need to detect any single-byte change, use `FileHasher`. For tamper-proof integrity checks, also choose a cryptographic algorithm such as `sha256`:
 
 ```php
 use Mfonte\SparseDigest\FileHasher;
@@ -303,6 +322,147 @@ $digest = $file->hashWith('xxh3');
 echo "Hash: " . $digest->toHex() . "\n";
 ```
 
+### Hashing streams
+
+`File::new()`, `SparseHasher::new()` and `FileHasher::new()` also accept an open stream, as long as it is readable, seekable and has a known size (local files, `php://memory`, `php://temp`, ...):
+
+```php
+use Mfonte\SparseDigest\SparseHasher;
+
+$stream = fopen('php://temp', 'w+b');
+fwrite($stream, $uploadedContents);
+
+$digest = SparseHasher::new($stream)->hash();
+```
+
+The library never closes a stream it did not open, but it does move the stream position: save and restore it with `ftell()`/`fseek()` if you need it. Non-seekable streams (pipes, sockets, `php://stdin`) are rejected with an `InvalidFileException`.
+
+### Comparing files
+
+`matches()` compares the file with another one (path, `SplFileInfo`, stream or `File`). Sizes are compared first, so files of different size are rejected without reading them:
+
+```php
+use Mfonte\SparseDigest\FileHasher;
+use Mfonte\SparseDigest\SparseHasher;
+
+// Fast: compares sparse hashes (same caveat as hash(): changes outside the sampled blocks are not seen)
+SparseHasher::new('/videos/a.mp4')->matches('/backup/a.mp4');
+SparseHasher::new('/videos/a.mp4')->matches('/backup/a.mp4', 20, 8192); // custom sampling
+
+// Exact: compares full-file hashes
+FileHasher::new('/videos/a.mp4')->matches('/backup/a.mp4');
+```
+
+### Working with HashResult
+
+```php
+use Mfonte\SparseDigest\HashResult;
+use Mfonte\SparseDigest\SparseHasher;
+
+$a = SparseHasher::new('/path/to/a.mp4')->hashAs('xxh128');
+$b = SparseHasher::new('/path/to/b.mp4')->hashAs('xxh128');
+
+$a->toHex();          // "3f1c..." (lowercase hex)
+$a->toBinary();       // raw bytes, e.g. for a BINARY(16) column
+(string) $a;          // same as toHex()
+json_encode(['h' => $a]); // {"h":"3f1c..."}
+
+$a->equals($b);       // constant-time comparison with another HashResult
+$a->equals('3f1c...'); // ...or with a hex string (case-insensitive)
+$a->toBase64();       // compact text form
+
+$a->getAlgorithm();   // "xxh128"
+$a->isSparse();       // true if blocks were sampled, false if the file was hashed in full
+                      // (text file, or too small for the requested coverage)
+
+// Rebuild a stored hash and compare it with a fresh one
+$stored = HashResult::fromHex($row['hash'], $row['algo']);
+$stored->equals(SparseHasher::new($path)->hashAs($row['algo'])); // bool
+```
+
+### Error handling
+
+Every exception thrown by the library implements `Mfonte\SparseDigest\Exception\SparseDigestException`, so you can catch them all in one place. They also extend the matching SPL exception, so `catch (\InvalidArgumentException $e)` and `catch (\RuntimeException $e)` keep working.
+
+| Exception (namespace `Mfonte\SparseDigest\Exception`) | Extends                    | When                                                                     |
+|------------------------------------|----------------------------|--------------------------------------------------------------------------|
+| `InvalidFileException`             | `InvalidArgumentException` | Path does not exist, is not a regular file or is unreadable; input is neither a string nor an `SplFileInfo` |
+| `UnsupportedAlgorithmException`    | `InvalidArgumentException` | Algorithm not listed by `hash_algos()` (see `getAlgorithm()`)            |
+| `InvalidSamplingParameterException`| `InvalidArgumentException` | `coverage` outside 1-100, or `sampleSize` not a positive multiple of 64  |
+| `InvalidRangeException`            | `InvalidArgumentException` | Invalid offset/length passed to `File::readBytesAtOffset()` and similar  |
+| `InvalidArgumentException`         | `\InvalidArgumentException`| Base class of the above; also thrown by `HashResult::fromHex()`          |
+| `IOException`                      | `RuntimeException`         | The file cannot be opened, read or hashed                                |
+| `RuntimeException`                 | `\RuntimeException`        | Base class of `IOException`                                              |
+| `BadMethodCallException`           | `\BadMethodCallException`  | Cloning or serializing a `File`                                          |
+
+`InvalidFileException` is also thrown for streams that are not readable, not seekable, or whose size is unknown.
+
+```php
+use Mfonte\SparseDigest\Exception\InvalidFileException;
+use Mfonte\SparseDigest\Exception\SparseDigestException;
+
+try {
+    $hash = SparseHasher::new($path)->hash();
+} catch (InvalidFileException $e) {
+    // missing or unreadable file
+} catch (SparseDigestException $e) {
+    // any other library error
+}
+```
+
+### Custom strategies
+
+The concrete classes are `final`: to change how files are hashed, implement `Mfonte\SparseDigest\HashingStrategy` and pass it to `SparseHasher` or `FileHasher` as second argument:
+
+```php
+use Mfonte\SparseDigest\File;
+use Mfonte\SparseDigest\HashingStrategy;
+use Mfonte\SparseDigest\HashResult;
+use Mfonte\SparseDigest\SparseHasher;
+
+final class HeaderOnlyStrategy implements HashingStrategy
+{
+    public function hash(File $file, int $coverage = 10, int $sampleSize = 4096): HashResult
+    {
+        return $this->hashAs($file, 'sha256', $coverage, $sampleSize);
+    }
+
+    public function hashAs(File $file, string $algo, int $coverage = 10, int $sampleSize = 4096): HashResult
+    {
+        $length = min($sampleSize, $file->getSize());
+
+        return HashResult::new(hash($algo, $file->readBytesAtOffset(0, $length), true));
+    }
+}
+
+$digest = SparseHasher::new('/path/to/file', new HeaderOnlyStrategy())->hash();
+```
+
+## Command line
+
+The package ships a small CLI, installed as `vendor/bin/sparsedigest`. Its output follows the `sha256sum` layout, so it is easy to pipe into other tools:
+
+```console
+$ vendor/bin/sparsedigest movie.mkv notes.txt
+5e2c1b0f8a9d3e47  movie.mkv
+0a00ce703ce97158  notes.txt
+
+$ vendor/bin/sparsedigest --full --algo=sha256 movie.mkv
+$ vendor/bin/sparsedigest --coverage=20 --sample-size=8192 movie.mkv
+$ vendor/bin/sparsedigest --json movie.mkv
+[
+    {
+        "path": "movie.mkv",
+        "hash": "5e2c1b0f8a9d3e47",
+        "algorithm": "xxh3",
+        "sparse": true,
+        "size": 734003200
+    }
+]
+```
+
+Run `vendor/bin/sparsedigest --help` for all options. The exit code is `0` on success, `1` if at least one file could not be hashed (the others are still printed), and `2` on invalid usage.
+
 ## Order of preference for hashing algorithms
 
 The library will use the fastest available algorithm from the following list, in ordered sequence (the first, the fastest):
@@ -310,14 +470,13 @@ The library will use the fastest available algorithm from the following list, in
 ```text
 'xxh3', 'xxh128', 'crc32c', 'xxh64', 'crc32', 'crc32b', 'murmur3f', 'xxh32',
 'murmur3c', 'murmur3a', 'adler32', 'md4', 'fnv1a64', 'fnv132', 'fnv164', 'fnv1a32',
-'joaat', 'md5', 'tiger128,3', 'tiger160,3', 'tiger192,3', 'sha1', 'tiger160,4',
-'tiger128,4', 'tiger192,4', 'ripemd128', 'ripemd256', 'sha3-224', 'sha3-256',
-'sha384', 'sha512/224', 'sha512/256', 'sha512', 'ripemd320', 'ripemd160', 'sha3-384',
-'haval128,3', 'haval160,3', 'haval192,3', 'haval224,3', 'haval256,3', 'sha224',
-'sha256', 'sha3-512', 'haval128,4', 'haval160,4', 'haval192,4', 'haval224,4',
-'haval256,4', 'haval128,5', 'haval160,5', 'haval192,5', 'haval224,5', 'haval256,5',
-'whirlpool', 'gost', 'gost-crypto', 'snefru', 'snefru256', 'md2'
+'joaat', 'md5', 'sha1', 'sha256'
 ```
+
+If none of these is available, the first algorithm returned by `hash_algos()` is used. The list is exposed as `Mfonte\SparseDigest\Strategy\AbstractStrategy::PREFERRED_ALGORITHMS`, and the algorithm actually picked can be read with `getDefaultAlgorithm()` on a strategy instance.
+
+> [!IMPORTANT]
+> The default algorithm depends on the PHP build (`xxh3` requires PHP 8.1+). If you persist hashes and may run them on different PHP versions, use `hashAs()` with an explicit algorithm so that the digests stay comparable.
 
 This pre-defined list has been derived from [https://php.watch/articles/php-hash-benchmark](https://php.watch/articles/php-hash-benchmark).
 
@@ -327,6 +486,12 @@ Run the test suite with:
 
 ```bash
 composer test
+```
+
+Run coding style checks, static analysis and tests in one go (this is what CI runs):
+
+```bash
+composer check
 ```
 
 Run the full benchmark suite with:
@@ -351,6 +516,10 @@ Please see [CHANGELOG](CHANGELOG.md) for more information on what has changed re
 ## Contributing
 
 Please see [CONTRIBUTING](CONTRIBUTING.md) for details.
+
+## Security
+
+If you discover a security issue, please follow the [security policy](SECURITY.md) instead of opening a public issue.
 
 ## License
 

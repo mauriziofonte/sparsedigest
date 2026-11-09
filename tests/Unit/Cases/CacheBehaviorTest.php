@@ -1,4 +1,5 @@
 <?php
+
 declare(strict_types=1);
 
 namespace Mfonte\SparseDigest\Test\Unit\Cases;
@@ -228,7 +229,7 @@ class CacheBehaviorTest extends TestCase
 
         // Cache should return identical results for same offset:length
         $this->assertSame($data1, $data2);
-        
+
         // Length should be at least 1000 bytes (may be more due to NULL replacement)
         $this->assertGreaterThanOrEqual(1000, strlen($data1));
     }

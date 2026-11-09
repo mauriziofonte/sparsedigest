@@ -1,11 +1,14 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Mfonte\SparseDigest\Strategy;
 
+use Mfonte\SparseDigest\Exception\InvalidArgumentException;
+use Mfonte\SparseDigest\Exception\RuntimeException;
 use Mfonte\SparseDigest\File;
 use Mfonte\SparseDigest\HashingStrategy;
 use Mfonte\SparseDigest\HashResult;
-use RuntimeException;
 
 /**
  * SparseStrategy - Sparse (sampled) file hashing strategy.
@@ -14,35 +17,34 @@ use RuntimeException;
  * The algorithm always samples the first two and last two blocks, with intermediate
  * blocks evenly distributed. The file size is appended to the intermediate results to enhance uniqueness.
  *
- * For files that are too small for the desired coverage, a full-file hash is computed.
+ * For files that are too small for the desired coverage, or that look like text, a full-file hash is computed.
  */
-class SparseStrategy extends AbstractStrategy implements HashingStrategy
+final class SparseStrategy extends AbstractStrategy implements HashingStrategy
 {
     /**
      * {@inheritdoc}
+     *
+     * @throws InvalidArgumentException if coverage or sample size are out of range.
+     * @throws RuntimeException if the file cannot be read.
      */
     public function hash(File $file, int $coverage = 10, int $sampleSize = 4096): HashResult
     {
-        $this->preventInvalidCoverage($coverage);
-        $this->preventInvalidSampleSize($sampleSize);
-
-        if ($file->cantBeSampled($coverage, $sampleSize) || !$file->isLikelyBinary()) {
-            // Fallback to full hash.
-            return $this->fullHash($file);
-        }
-
-        return $this->sparseHash($file, $coverage, $sampleSize);
+        return $this->hashAs($file, $this->defaultAlgo, $coverage, $sampleSize);
     }
 
     /**
      * {@inheritdoc}
+     *
+     * @throws InvalidArgumentException if the algorithm, coverage or sample size are invalid.
+     * @throws RuntimeException if the file cannot be read.
      */
     public function hashAs(File $file, string $algo, int $coverage = 10, int $sampleSize = 4096): HashResult
     {
+        $this->preventInvalidAlgorithm($algo);
         $this->preventInvalidCoverage($coverage);
         $this->preventInvalidSampleSize($sampleSize);
 
-        if ($file->cantBeSampled($coverage, $sampleSize) || !$file->isLikelyBinary()) {
+        if ($file->cantBeSampled($coverage, $sampleSize) || ! $file->isLikelyBinary()) {
             // Fallback to full hash.
             return $this->fullHash($file, $algo);
         }
@@ -63,23 +65,25 @@ class SparseStrategy extends AbstractStrategy implements HashingStrategy
      *
      * @return HashResult
      */
-    protected function sparseHash(File $file, int $coverage, int $sampleSize, ?string $algo = null): HashResult
+    private function sparseHash(File $file, int $coverage, int $sampleSize, ?string $algo = null): HashResult
     {
         $algorithm = $algo ?? $this->defaultAlgo;
-        $offsets = $this->computeSampleOffsets($file, $coverage, $sampleSize);
 
-        // Use incremental hashing - no intermediate strings
-        $ctx = hash_init($algorithm);
+        return $this->stopwatch(function () use ($file, $coverage, $sampleSize, $algorithm): HashResult {
+            $offsets = $this->computeSampleOffsets($file, $coverage, $sampleSize);
 
-        foreach ($offsets as $offset) {
-            $chunk = $file->readBytesAtOffset($offset, $sampleSize);
-            hash_update($ctx, $chunk);
-        }
+            // Use incremental hashing - no intermediate strings
+            $ctx = hash_init($algorithm);
 
-        // Append file size for uniqueness
-        hash_update($ctx, (string) $file->getSize());
+            foreach ($offsets as $offset) {
+                hash_update($ctx, $file->readBytesAtOffset($offset, $sampleSize));
+            }
 
-        return HashResult::new(hash_final($ctx, true));
+            // Append file size for uniqueness
+            hash_update($ctx, (string) $file->getSize());
+
+            return HashResult::new(hash_final($ctx, true), $algorithm, true);
+        });
     }
 
     /**
@@ -90,12 +94,13 @@ class SparseStrategy extends AbstractStrategy implements HashingStrategy
      *
      * @return HashResult
      */
-    protected function fullHash(File $file, ?string $algo = null): HashResult
+    private function fullHash(File $file, ?string $algo = null): HashResult
     {
-        $result = $this->stopwatch(function () use ($file, $algo) {
-            return hash_file($algo ?? $this->defaultAlgo, $file->getPath(), true);
+        $algorithm = $algo ?? $this->defaultAlgo;
+
+        return $this->stopwatch(static function () use ($file, $algorithm): HashResult {
+            return $file->hashWith($algorithm);
         });
-        return HashResult::new($result);
     }
 
     /**
@@ -108,10 +113,10 @@ class SparseStrategy extends AbstractStrategy implements HashingStrategy
      * @param File $file
      * @param int $coverage Desired coverage percentage.
      * @param int $sampleSize Block size in bytes.
-     * @return array<int>
+     * @return list<int>
      * @throws RuntimeException if the file is too small.
      */
-    protected function computeSampleOffsets(File $file, int $coverage, int $sampleSize): array
+    private function computeSampleOffsets(File $file, int $coverage, int $sampleSize): array
     {
         $fileSize = $file->getSize();
         // Calculate the total number of bytes to sample based on coverage.

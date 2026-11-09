@@ -1,0 +1,33 @@
+name: Bug report
+description: Report something that does not work as documented.
+labels: [bug]
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: What happened, and what did you expect to happen?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: How to reproduce
+      description: A minimal code snippet, and the file size/type involved.
+      render: php
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: SparseDigest version
+      placeholder: e.g. 1.0.0
+    validations:
+      required: true
+  - type: input
+    id: php
+    attributes:
+      label: PHP version and OS
+      placeholder: e.g. PHP 8.3.6 on Ubuntu 24.04
+    validations:
+      required: true

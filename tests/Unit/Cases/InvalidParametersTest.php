@@ -1,11 +1,12 @@
 <?php
+
 declare(strict_types=1);
 
 namespace Mfonte\SparseDigest\Test\Unit\Cases;
 
+use InvalidArgumentException;
 use Mfonte\SparseDigest\SparseHasher;
 use Mfonte\SparseDigest\Test\Unit\TestCase;
-use InvalidArgumentException;
 
 final class InvalidParametersTest extends TestCase
 {
@@ -54,9 +55,10 @@ final class InvalidParametersTest extends TestCase
         }
     }
 
-    public function testEmptyFileThrowsException(): void
+    public function testEmptyFileIsAccepted(): void
     {
-        $this->expectException(InvalidArgumentException::class);
-        SparseHasher::new($this->createTempFileOfSize(0));
+        $hash = SparseHasher::new($this->createTempFileOfSize(0))->hash();
+
+        $this->assertFalse($hash->isSparse());
     }
 }

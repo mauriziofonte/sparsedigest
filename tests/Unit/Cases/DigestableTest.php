@@ -1,13 +1,13 @@
 <?php
+
 declare(strict_types=1);
 
 namespace Mfonte\SparseDigest\Test\Unit\Cases;
 
+use InvalidArgumentException;
 use Mfonte\SparseDigest\File;
 use Mfonte\SparseDigest\HashResult;
 use Mfonte\SparseDigest\Test\Unit\TestCase;
-use InvalidArgumentException;
-use RuntimeException;
 use SplFileInfo;
 
 /**
@@ -102,15 +102,13 @@ class DigestableTest extends TestCase
 
     /**
      * Test that getSize() returns 0 for an empty file.
-     * Note: The library throws an exception for empty files by design.
      */
-    public function testGetSizeThrowsForEmptyFile(): void
+    public function testGetSizeReturnsZeroForEmptyFile(): void
     {
-        $this->expectException(InvalidArgumentException::class);
-        $this->expectExceptionMessage('does not exist or is empty');
+        $file = File::new($this->createTempFileWithContents(''));
 
-        $tempFile = $this->createTempFileWithContents('');
-        File::new($tempFile);
+        $this->assertSame(0, $file->getSize());
+        $this->assertSame(hash('sha256', '', true), $file->hashWith('sha256')->toBinary());
     }
 
     /**
@@ -302,7 +300,7 @@ class DigestableTest extends TestCase
 
         // Read 100 bytes at offset 0
         $data100 = $file->readMeaningfulBytesAtOffset(0, 100);
-        
+
         // Read 200 bytes at offset 0
         $data200 = $file->readMeaningfulBytesAtOffset(0, 200);
 

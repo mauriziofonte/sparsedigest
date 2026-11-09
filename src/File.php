@@ -1,78 +1,142 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Mfonte\SparseDigest;
 
+use Mfonte\SparseDigest\Exception\BadMethodCallException;
+use Mfonte\SparseDigest\Exception\InvalidFileException;
+use Mfonte\SparseDigest\Exception\InvalidRangeException;
+use Mfonte\SparseDigest\Exception\IOException;
+use Mfonte\SparseDigest\Exception\UnsupportedAlgorithmException;
 use SplFileInfo;
-use InvalidArgumentException;
-use RuntimeException;
 
 /**
  * File.
  *
  * Represents a file on the filesystem and provides methods for reading its contents.
  * This class encapsulates file I/O and reading data segments used by hashing strategies.
- *
- * @phpstan-consistent-constructor
  */
-class File
+final class File
 {
     /** @var string */
-    protected $path;
+    private $path;
 
     /** @var int */
-    protected $size;
+    private $size;
 
     /** @var string|null */
-    protected $mimeType = null;
+    private $mimeType = null;
 
     /** @var array<string, string> */
-    protected $chunks = [];
+    private $chunks = [];
 
     /** @var resource|null */
-    protected $handle = null;
+    private $handle = null;
+
+    /** @var bool Whether the handle was passed in by the caller (and must not be closed by this object). */
+    private $isStream = false;
 
     /**
      * Factory method.
      *
-     * @param string|SplFileInfo $file
-     * @return static
-     * @throws InvalidArgumentException if the file is invalid.
+     * @param string|SplFileInfo|resource $file A path, an SplFileInfo, or a readable and seekable stream.
+     * @return self
+     * @throws InvalidFileException if the file is invalid.
      */
     public static function new($file): self
     {
-        return new static($file);
+        return new self($file);
     }
 
     /**
      * Constructor.
      *
-     * @param string|SplFileInfo $file
-     * @throws InvalidArgumentException
+     * @param string|SplFileInfo|resource $file
+     * @throws InvalidFileException
      */
-    protected function __construct($file)
+    private function __construct($file)
     {
-        if (!is_string($file) && !($file instanceof SplFileInfo)) {
-            $type = is_object($file) ? get_class($file) : gettype($file);
-            throw new InvalidArgumentException("Invalid file type: {$type}");
+        if (is_resource($file)) {
+            $this->initFromStream($file);
+
+            return;
         }
+
         if ($file instanceof SplFileInfo) {
-            $path = $file->getRealPath();
-            $size = $file->getSize();
-        } else {
+            $realPath = $file->getRealPath();
+            $path = $realPath !== false ? $realPath : $file->getPathname();
+        } elseif (is_string($file)) {
             $path = $file;
-            $size = @filesize($file);
+        } else {
+            $type = is_object($file) ? get_class($file) : gettype($file);
+
+            throw new InvalidFileException("Invalid file type: {$type}");
         }
-        if (!$size) {
-            throw new InvalidArgumentException("File '{$path}' does not exist or is empty.");
+
+        if ($path === '' || ! file_exists($path)) {
+            throw new InvalidFileException("File '{$path}' does not exist.");
         }
-        if (!is_file($path)) {
-            throw new InvalidArgumentException("Path '{$path}' is not a file.");
+        if (! is_file($path)) {
+            throw new InvalidFileException("Path '{$path}' is not a file.");
         }
-        if (!is_readable($path)) {
-            throw new InvalidArgumentException("File '{$path}' is not readable.");
+        if (! is_readable($path)) {
+            throw new InvalidFileException("File '{$path}' is not readable.");
         }
+
+        $size = @filesize($path);
+        if ($size === false) {
+            throw new InvalidFileException("Unable to determine the size of file '{$path}'.");
+        }
+
         $this->path = $path;
         $this->size = $size;
+    }
+
+    /**
+     * Initializes the instance from an already open stream.
+     *
+     * The stream must be readable and seekable, and its size must be known (fstat).
+     * It is not closed by this object: the caller keeps ownership of it.
+     *
+     * @param resource $stream
+     * @throws InvalidFileException
+     */
+    private function initFromStream($stream): void
+    {
+        if (get_resource_type($stream) !== 'stream') {
+            throw new InvalidFileException('Invalid file type: resource of type ' . get_resource_type($stream));
+        }
+
+        $meta = stream_get_meta_data($stream);
+        if (! $meta['seekable']) {
+            throw new InvalidFileException('The stream is not seekable.');
+        }
+        if (strpbrk($meta['mode'], 'r+') === false) {
+            throw new InvalidFileException("The stream is not readable (mode '{$meta['mode']}').");
+        }
+
+        $stat = @fstat($stream);
+        if ($stat === false || ! isset($stat['size'])) {
+            throw new InvalidFileException('Unable to determine the size of the stream.');
+        }
+
+        // 'uri' is missing for some stream types (e.g. sockets) despite what the stubs say.
+        $uri = array_key_exists('uri', $meta) ? (string) $meta['uri'] : '';
+        $this->path = $uri !== '' ? $uri : 'php://stream';
+        $this->size = (int) $stat['size'];
+        $this->handle = $stream;
+        $this->isStream = true;
+    }
+
+    /**
+     * Whether this instance wraps a caller-provided stream rather than a path.
+     *
+     * @return bool
+     */
+    public function isStream(): bool
+    {
+        return $this->isStream;
     }
 
     /**
@@ -103,29 +167,58 @@ class File
     public function getMimeType(): string
     {
         if ($this->mimeType === null) {
-            $mime = @mime_content_type($this->path);
+            // mime_content_type() is provided by ext-fileinfo, which is optional.
+            $mime = false;
+            if (function_exists('mime_content_type')) {
+                $mime = $this->isStream ? @mime_content_type($this->getHandle()) : @mime_content_type($this->path);
+            }
             $this->mimeType = $mime !== false ? $mime : 'application/octet-stream';
         }
+
         return $this->mimeType;
     }
 
     /**
      * Computes a full-file hash using the specified algorithm.
      *
-     * @param string $algorithm
+     * @param string $algorithm Any algorithm listed by hash_algos().
      * @return HashResult
+     *
+     * @throws UnsupportedAlgorithmException if the algorithm is not supported.
+     * @throws IOException if the file cannot be read.
      */
     public function hashWith(string $algorithm): HashResult
     {
-        if (!in_array($algorithm, hash_algos(), true)) {
-            throw new InvalidArgumentException("Invalid hash algorithm: {$algorithm}");
+        if (! in_array($algorithm, hash_algos(), true)) {
+            throw UnsupportedAlgorithmException::forAlgorithm($algorithm);
         }
-        $hash = @hash_file($algorithm, $this->path, true);
+        $hash = $this->isStream ? $this->hashStream($algorithm) : @hash_file($algorithm, $this->path, true);
         if ($hash === false) {
             $error = error_get_last();
-            throw new RuntimeException("Unable to hash file '{$this->path}': " . ($error['message'] ?? 'unknown error'));
+
+            throw new IOException("Unable to hash file '{$this->path}': " . ($error['message'] ?? 'unknown error'));
         }
-        return HashResult::new($hash);
+
+        return HashResult::new($hash, $algorithm, false);
+    }
+
+    /**
+     * Hashes the whole wrapped stream, from offset 0.
+     *
+     * @param string $algorithm
+     * @return string|false
+     */
+    private function hashStream(string $algorithm)
+    {
+        $handle = $this->getHandle();
+        if (fseek($handle, 0) === -1) {
+            return false;
+        }
+
+        $ctx = hash_init($algorithm);
+        hash_update_stream($ctx, $handle);
+
+        return hash_final($ctx, true);
     }
 
     /**
@@ -144,6 +237,7 @@ class File
         $fileSize = $this->getSize();
         $totalSampleBytes = (int) floor($fileSize * $coverage / 100);
         $totalBlocks = (int) floor($totalSampleBytes / $sampleSize);
+
         return $totalBlocks < 4 || $fileSize < ($totalBlocks * $sampleSize);
     }
 
@@ -201,27 +295,27 @@ class File
      *
      * @return string A string containing exactly $length bytes.
      *
-     * @throws InvalidArgumentException if $offset is negative, $length is less than 1, or the requested range exceeds the file size.
-     * @throws RuntimeException if seeking or reading from the file fails.
+     * @throws InvalidRangeException if $offset is negative, $length is less than 1, or the requested range exceeds the file size.
+     * @throws IOException if seeking or reading from the file fails.
      */
     public function readBytesAtOffset(int $offset, int $length): string
     {
         if ($offset < 0 || $length < 1) {
-            throw new InvalidArgumentException("Invalid offset or length: offset={$offset}, length={$length}");
+            throw new InvalidRangeException("Invalid offset or length: offset={$offset}, length={$length}");
         }
 
         if ($offset + $length > $this->size) {
-            throw new InvalidArgumentException("Read range exceeds file size: offset={$offset}, length={$length}, size={$this->size}");
+            throw new InvalidRangeException("Read range exceeds file size: offset={$offset}, length={$length}, size={$this->size}");
         }
 
         $handle = $this->getHandle();
         if (fseek($handle, $offset) === -1) {
-            throw new RuntimeException("Unable to seek to offset {$offset} in file '{$this->path}'.");
+            throw new IOException("Unable to seek to offset {$offset} in file '{$this->path}'.");
         }
 
         $data = fread($handle, $length);
         if ($data === false || strlen($data) !== $length) {
-            throw new RuntimeException("Unable to read {$length} bytes at offset {$offset} in file '{$this->path}'.");
+            throw new IOException("Unable to read {$length} bytes at offset {$offset} in file '{$this->path}'.");
         }
 
         return $data;
@@ -247,8 +341,8 @@ class File
      *
      * @return string A string containing exactly $length bytes of meaningful (non-null) data.
      *
-     * @throws InvalidArgumentException if $offset is negative, $length is less than 1, or the requested range exceeds the file size.
-     * @throws RuntimeException if seeking or reading from the file fails.
+     * @throws InvalidRangeException if $offset is negative, $length is less than 1, or the requested range exceeds the file size.
+     * @throws IOException if seeking or reading from the file fails.
      */
     public function readMeaningfulBytesAtOffset(int $offset, int $length): string
     {
@@ -259,16 +353,11 @@ class File
         }
 
         if ($offset < 0 || $length < 1) {
-            throw new InvalidArgumentException("Invalid offset or length: offset={$offset}, length={$length}");
+            throw new InvalidRangeException("Invalid offset or length: offset={$offset}, length={$length}");
         }
 
         if ($offset + $length > $this->size) {
-            throw new InvalidArgumentException("Read range exceeds file size: offset={$offset}, length={$length}, size={$this->size}");
-        }
-
-        $handle = $this->getHandle();
-        if (fseek($handle, $offset) === -1) {
-            throw new RuntimeException("Unable to seek to offset {$offset} in file '{$this->path}'.");
+            throw new InvalidRangeException("Read range exceeds file size: offset={$offset}, length={$length}, size={$this->size}");
         }
 
         $data = $this->readNonNullData($offset, $length);
@@ -314,13 +403,12 @@ class File
      * @return string A string containing $length bytes read from the file, with all null bytes removed and replaced by their
      *                segment length. If the block was read in backward mode, the string is reversed to restore logical order.
      *
-     * @throws RuntimeException if seeking fails or if the file cannot yield exactly $length bytes.
+     * @throws IOException if seeking fails or if the file cannot yield exactly $length bytes.
      */
     private function readNonNullData(int $offset, int $length): string
     {
-        $handle = $this->getHandle();
-        if (fseek($handle, $offset) === -1) {
-            throw new RuntimeException("Unable to seek to offset {$offset} in file '{$this->path}'.");
+        if ($length < 1) {
+            throw new InvalidRangeException("Invalid length: {$length}");
         }
 
         // Detect if we need to read backward
@@ -332,25 +420,28 @@ class File
 
         // Ensure offset is valid
         if ($offset < 0) {
-            throw new RuntimeException("Invalid offset: {$offset}");
+            throw new InvalidRangeException("Invalid offset: {$offset}");
         }
 
-        // Seek to the correct offset
+        $handle = $this->getHandle();
         if (fseek($handle, $offset) === -1) {
-            throw new RuntimeException("Unable to seek to offset {$offset} in file '{$this->path}'.");
+            throw new IOException("Unable to seek to offset {$offset} in file '{$this->path}'.");
         }
 
         // Read exactly $length bytes
         $data = fread($handle, $length);
         if ($data === false || strlen($data) !== $length) {
-            throw new RuntimeException("Unable to read {$length} bytes at offset {$offset} in file '{$this->path}'.");
+            throw new IOException("Unable to read {$length} bytes at offset {$offset} in file '{$this->path}'.");
         }
 
         // replace each segment of null bytes with its respective length
         // this will increase data stream uniqueness
-        $data = preg_replace_callback('/\x00+/', function ($match) {
+        $data = preg_replace_callback('/\x00+/', static function (array $match): string {
             return (string) strlen($match[0]);
         }, $data);
+        if ($data === null) {
+            throw new IOException('Unable to process null bytes: ' . preg_last_error());
+        }
 
         // Reverse data if reading backward
         return $isBackward ? strrev($data) : $data;
@@ -360,13 +451,17 @@ class File
      * Returns a file handle.
      *
      * @return resource
-     * @throws RuntimeException
+     * @throws IOException
      */
-    protected function getHandle()
+    private function getHandle()
     {
         if ($this->handle === null) {
             $this->open();
         }
+        if (! is_resource($this->handle)) {
+            throw new IOException("Unable to open file '{$this->path}' for reading.");
+        }
+
         return $this->handle;
     }
 
@@ -374,13 +469,13 @@ class File
      * Opens the file for reading.
      *
      * @return void
-     * @throws RuntimeException
+     * @throws IOException
      */
-    protected function open(): void
+    private function open(): void
     {
         $handle = @fopen($this->path, 'rb');
         if ($handle === false) {
-            throw new RuntimeException("Unable to open file '{$this->path}' for reading.");
+            throw new IOException("Unable to open file '{$this->path}' for reading.");
         }
         $this->handle = $handle;
     }
@@ -390,7 +485,13 @@ class File
      */
     private function close(): void
     {
-        if ($this->handle) {
+        if ($this->isStream) {
+            // The caller owns the stream: never close it.
+            $this->handle = null;
+
+            return;
+        }
+        if (is_resource($this->handle)) {
             fclose($this->handle);
             $this->handle = null;
         }
@@ -432,7 +533,7 @@ class File
      */
     public function __clone()
     {
-        throw new \BadMethodCallException('Cloning is not allowed for ' . __CLASS__);
+        throw new BadMethodCallException('Cloning is not allowed for ' . __CLASS__);
     }
 
     /**
@@ -440,7 +541,7 @@ class File
      */
     public function __sleep()
     {
-        throw new \BadMethodCallException('Serialization is not allowed for ' . __CLASS__);
+        throw new BadMethodCallException('Serialization is not allowed for ' . __CLASS__);
     }
 
     /**
@@ -448,6 +549,6 @@ class File
      */
     public function __wakeup()
     {
-        throw new \BadMethodCallException('Unserialization is not allowed for ' . __CLASS__);
+        throw new BadMethodCallException('Unserialization is not allowed for ' . __CLASS__);
     }
 }

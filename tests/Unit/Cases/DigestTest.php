@@ -1,4 +1,5 @@
 <?php
+
 declare(strict_types=1);
 
 namespace Mfonte\SparseDigest\Test\Unit\Cases;
@@ -152,7 +153,7 @@ class DigestTest extends TestCase
     public function testRoundTripConversion(): void
     {
         $originalHex = 'abcdef0123456789';
-        $binary = hex2bin($originalHex);
+        $binary = (string) hex2bin($originalHex);
         $digest = HashResult::new($binary);
 
         $this->assertSame($originalHex, $digest->toHex());

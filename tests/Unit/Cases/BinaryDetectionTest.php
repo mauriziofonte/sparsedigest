@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Mfonte\SparseDigest\Test\Unit\Cases;
 
 use Mfonte\SparseDigest\File;
@@ -478,7 +480,7 @@ class BinaryDetectionTest extends TestCase
         // Our fast method will consider it binary, but this is acceptable
         // because BOM files are rare and the fallback to full hash is fine
         $result = $file->isLikelyBinary();
-        
+
         // We accept either behavior - the important thing is it's deterministic
         $this->assertIsBool($result, 'BOM detection should return a boolean');
     }

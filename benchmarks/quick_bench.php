@@ -1,4 +1,6 @@
 <?php
+
+declare(strict_types=1);
 /**
  * Quick benchmark for iterative optimization testing.
  * Usage: php benchmarks/quick_bench.php
@@ -6,12 +8,12 @@
 
 require_once __DIR__ . '/../vendor/autoload.php';
 
-use Mfonte\SparseDigest\SparseHasher;
 use Mfonte\SparseDigest\File;
+use Mfonte\SparseDigest\SparseHasher;
 
 // Create test files of 5MB and 10MB
 $testDir = sys_get_temp_dir() . '/sparsedigest_quick_bench';
-if (!is_dir($testDir)) {
+if (! is_dir($testDir)) {
     mkdir($testDir, 0755, true);
 }
 
@@ -25,7 +27,7 @@ $files = [
 ];
 
 foreach ($files as $label => $path) {
-    if (!file_exists($path)) {
+    if (! file_exists($path)) {
         $sizes = [
             '256KB' => 256 * 1024,
             '512KB' => 512 * 1024,
@@ -53,10 +55,10 @@ $iterations = 5;
 
 foreach ($files as $label => $path) {
     echo "--- {$label} File ---\n";
-    
+
     // Warm up filesystem cache
     file_get_contents($path, false, null, 0, 1);
-    
+
     // 1. Native hash_file (xxh3)
     $times = [];
     for ($i = 0; $i < $iterations; $i++) {
@@ -66,24 +68,24 @@ foreach ($files as $label => $path) {
     }
     $avgNative = array_sum($times) / count($times);
     $memBefore = memory_get_usage(true);
-    
+
     // 2. SparseDigest
     $times = [];
     $peakMem = 0;
     for ($i = 0; $i < $iterations; $i++) {
         gc_collect_cycles();
         $memStart = memory_get_usage(true);
-        
+
         $start = hrtime(true);
         $sd = SparseHasher::new($path);
         $digest = $sd->hash();
         $times[] = (hrtime(true) - $start) / 1_000_000;
-        
+
         $peakMem = max($peakMem, memory_get_usage(true) - $memStart);
         unset($sd, $digest);
     }
     $avgSparse = array_sum($times) / count($times);
-    
+
     // 3. Breakdown: isLikelyBinary only
     $times = [];
     for ($i = 0; $i < $iterations; $i++) {
@@ -93,7 +95,7 @@ foreach ($files as $label => $path) {
         $times[] = (hrtime(true) - $start) / 1_000_000;
     }
     $avgBinaryCheck = array_sum($times) / count($times);
-    
+
     // 4. Breakdown: cantBeSampled only
     $times = [];
     for ($i = 0; $i < $iterations; $i++) {
@@ -103,7 +105,7 @@ foreach ($files as $label => $path) {
         $times[] = (hrtime(true) - $start) / 1_000_000;
     }
     $avgCantBeSampled = array_sum($times) / count($times);
-    
+
     // Results
     printf("  Native hash_file(xxh3):    %8.3f ms\n", $avgNative);
     printf(

@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Mfonte\SparseDigest\Test\Unit;
 
 use PHPUnit\Framework\TestCase as PHPUnitTestCase;
@@ -49,6 +51,21 @@ abstract class TestCase extends PHPUnitTestCase
     }
 
     /**
+     * Creates an empty temporary file and returns its path.
+     *
+     * @return string
+     */
+    private function createTempFileName(): string
+    {
+        $tempFile = tempnam(sys_get_temp_dir(), 'sparsedigest_');
+        if ($tempFile === false) {
+            throw new \RuntimeException('Unable to create a temporary file.');
+        }
+
+        return $tempFile;
+    }
+
+    /**
      * Returns a temporary file containing the specified contents.
      *
      * @param string $contents
@@ -57,7 +74,7 @@ abstract class TestCase extends PHPUnitTestCase
      */
     protected function createTempFileWithContents(string $contents): string
     {
-        $tempFile = tempnam(sys_get_temp_dir(), 'sparsedigest_');
+        $tempFile = $this->createTempFileName();
 
         $handle = fopen($tempFile, 'wb');
         if ($handle === false) {
@@ -95,7 +112,7 @@ abstract class TestCase extends PHPUnitTestCase
      */
     protected function createTempFileOfSize(int $size, bool $binary = true): string
     {
-        $tempFile = tempnam(sys_get_temp_dir(), 'sparsedigest_');
+        $tempFile = $this->createTempFileName();
 
         $handle = fopen($tempFile, 'wb');
         if ($handle === false) {
@@ -106,6 +123,7 @@ abstract class TestCase extends PHPUnitTestCase
             $bytesWritten = 0;
             while ($bytesWritten < $size) {
                 $bytesToWrite = min($size - $bytesWritten, 4096);
+                assert($bytesToWrite > 0);
 
                 // generate either binary or text data
                 $data = ($binary) ? random_bytes($bytesToWrite) : $this->generateUtf8PrintableString($bytesToWrite);
@@ -143,7 +161,7 @@ abstract class TestCase extends PHPUnitTestCase
      *
      * @return string
      */
-    protected function createTempFileOfSizeWithNullBytes(int $size, array $offsets, bool $binary = true) : string
+    protected function createTempFileOfSizeWithNullBytes(int $size, array $offsets, bool $binary = true): string
     {
         try {
             $tempFile = $this->createTempFileOfSize($size, $binary);
@@ -203,7 +221,7 @@ abstract class TestCase extends PHPUnitTestCase
             $minNullOffset = $sampleSize * 2;
             $maxNullOffset = $size - $sampleSize * 3;
         }
-        
+
         $nulls = random_int(1, $maxNulls);
         for ($i = 0; $i < $nulls; $i++) {
             $nullOffsets[] = random_int($minNullOffset, $maxNullOffset);

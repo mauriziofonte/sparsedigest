@@ -6,6 +6,8 @@ Please read and understand the contribution guide before creating an issue or pu
 
 ## Etiquette
 
+This project follows a [Code of Conduct](CODE_OF_CONDUCT.md). By participating, you are expected to uphold it.
+
 This project is open source, and as such, the maintainers give their free time to build and maintain the source code
 held within. They make the code freely available in the hope that it will be of use to other developers. It would be
 extremely unfair for them to suffer abuse or anger for their hard work.
@@ -36,14 +38,38 @@ Before submitting a pull request:
 - Check the codebase to ensure that your feature doesn't already exist.
 - Check the pull requests to ensure that another person hasn't already submitted the feature or fix.
 
+## Development setup
+
+```bash
+git clone https://github.com/mauriziofonte/sparsedigest.git
+cd sparsedigest
+composer install
+```
+
+Useful commands:
+
+| Command                 | What it does                                          |
+|-------------------------|-------------------------------------------------------|
+| `composer test`         | Run the PHPUnit test suite                            |
+| `composer analyse`      | Run PHPStan (level `max`) on `src/` and `tests/`      |
+| `composer cs:check`     | Check coding style without modifying files            |
+| `composer cs:fix`       | Fix coding style in place                             |
+| `composer check`        | All of the above, as run in CI                        |
+| `composer bench`        | Run the PHPBench benchmark suite                      |
+
 ## Requirements
 
-If the project maintainer has any additional requirements, you will find them listed here.
+- **Coding style**: [PSR-12](https://www.php-fig.org/psr/psr-12/), enforced by [PHP CS Fixer](https://cs.symfony.com/) through `.php-cs-fixer.dist.php`. Run `composer cs:fix` before committing.
+- **Static analysis**: `composer analyse` must report no errors. Do not add baseline entries or `@phpstan-ignore` comments without explaining why.
+- **PHP compatibility**: the library supports PHP 7.2 and later. Do not use syntax or functions introduced after PHP 7.2 in `src/` (no typed properties, union types, `match`, named arguments, `str_contains()`, ...).
+- **Add tests!** Your patch won't be accepted if it doesn't have tests.
+- **Hash stability**: a change that alters the hash produced for an existing file is a breaking change, since users persist hashes. Call it out explicitly in the pull request.
+- **Document any change in behaviour**: keep `README.md` up to date and add an entry to `CHANGELOG.md` under "Unreleased".
+- **One pull request per feature**: if you want to do more than one thing, send multiple pull requests.
+- **Send coherent history**: make sure each individual commit in your pull request is meaningful. If you had to make multiple intermediate commits while developing, please [squash them](https://git-scm.com/book/en/v2/Git-Tools-Rewriting-History#_squashing) before submitting.
 
-- **[PSR-12 Coding Standard](https://github.com/php-fig/fig-standards/blob/master/accepted/PSR-12-extended-coding-style-guide.md)** - The easiest way to apply the conventions is to install [PHP Code Sniffer](http://pear.php.net/package/PHP_CodeSniffer).
-- **Add tests!** - Your patch won't be accepted if it doesn't have tests.
-- **Document any change in behaviour** - Make sure the `README.md` and any other relevant documentation are kept up-to-date.
-- **One pull request per feature** - If you want to do more than one thing, send multiple pull requests.
-- **Send coherent history** - Make sure each individual commit in your pull request is meaningful. If you had to make multiple intermediate commits while developing, please [squash them](http://www.git-scm.com/book/en/v2/Git-Tools-Rewriting-History#Changing-Multiple-Commit-Messages) before submitting.
+## Security
+
+Please do not report security vulnerabilities through public issues: see [SECURITY.md](SECURITY.md).
 
 **Happy coding**!

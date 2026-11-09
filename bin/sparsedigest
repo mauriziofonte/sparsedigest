@@ -1,0 +1,23 @@
+#!/usr/bin/env php
+<?php
+
+declare(strict_types=1);
+
+// Works both from a clone of the repository and when installed as a dependency.
+foreach ([__DIR__ . '/../vendor/autoload.php', __DIR__ . '/../../../autoload.php'] as $autoload) {
+    if (is_file($autoload)) {
+        require $autoload;
+
+        break;
+    }
+}
+
+if (! class_exists(\Mfonte\SparseDigest\Console\Application::class)) {
+    fwrite(STDERR, "sparsedigest: unable to find the Composer autoloader. Run 'composer install'.\n");
+    exit(1);
+}
+
+$arguments = $argv;
+array_shift($arguments);
+
+exit((new \Mfonte\SparseDigest\Console\Application())->run(array_values($arguments)));

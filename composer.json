@@ -1,7 +1,6 @@
 {
     "name": "mfonte/sparsedigest",
-    "version": "1.0.0",
-    "description": "Fast PHP file hashing library using intelligent sampling. Reads only selected portions of large binary files instead of full content, dramatically reducing I/O overhead. Automatically falls back to full-file hashing for text files. Deterministic, non-cryptographic, optimized for change detection.",
+    "description": "Fast, deterministic file hashing for change detection: samples selected blocks of large binary files instead of reading them in full, and falls back to a full-file hash for text files. Not cryptographic.",
     "keywords": [
         "hash",
         "hashing",
@@ -27,7 +26,25 @@
             "role": "Developer"
         }
     ],
-    "minimum-stability": "stable",
+    "support": {
+        "issues": "https://github.com/mauriziofonte/sparsedigest/issues",
+        "source": "https://github.com/mauriziofonte/sparsedigest",
+        "security": "https://github.com/mauriziofonte/sparsedigest/security/policy"
+    },
+    "require": {
+        "php": "^7.2 || ^8.0",
+        "ext-hash": "*"
+    },
+    "require-dev": {
+        "ext-mbstring": "*",
+        "friendsofphp/php-cs-fixer": "^3.4",
+        "phpbench/phpbench": "^0.17 || ^1.2",
+        "phpstan/phpstan": "^1.12",
+        "phpunit/phpunit": "^8.5.21"
+    },
+    "suggest": {
+        "ext-fileinfo": "Required by File::getMimeType() to detect MIME types; without it, \"application/octet-stream\" is returned."
+    },
     "autoload": {
         "psr-4": {
             "Mfonte\\SparseDigest\\": "src/"
@@ -39,21 +56,26 @@
             "Mfonte\\SparseDigest\\Benchmarks\\": "benchmarks/"
         }
     },
-    "require": {
-        "php": ">=7.2",
-        "ext-mbstring": "*"
-    },
-    "require-dev": {
-        "friendsofphp/php-cs-fixer": "^3.4",
-        "phpunit/phpunit": "^8",
-        "phpstan/phpstan": "^1.12",
-        "php-coveralls/php-coveralls": "^2.7",
-        "phpbench/phpbench": "^0.17 || ^1.2"
+    "bin": [
+        "bin/sparsedigest"
+    ],
+    "minimum-stability": "stable",
+    "prefer-stable": true,
+    "config": {
+        "sort-packages": true
     },
     "scripts": {
-        "fix": "@php vendor/bin/php-cs-fixer fix --config=.php-cs-fixer.dist.php",
-        "test": "@php vendor/bin/phpunit --verbose --colors=always",
-        "analyse": "@php vendor/bin/phpstan analyse",
+        "test": "@php vendor/bin/phpunit --colors=always",
+        "test:coverage": "@php vendor/bin/phpunit --coverage-text --coverage-clover=clover.xml",
+        "analyse": "@php vendor/bin/phpstan analyse --memory-limit=1G",
+        "cs:check": "@php vendor/bin/php-cs-fixer fix --config=.php-cs-fixer.dist.php --dry-run --diff",
+        "cs:fix": "@php vendor/bin/php-cs-fixer fix --config=.php-cs-fixer.dist.php",
+        "fix": "@cs:fix",
+        "check": [
+            "@cs:check",
+            "@analyse",
+            "@test"
+        ],
         "bench": "@php vendor/bin/phpbench run --report=default",
         "bench:core": "@php vendor/bin/phpbench run --group=core --report=default",
         "bench:scaling": "@php vendor/bin/phpbench run --group=scaling --report=default",
@@ -61,7 +83,17 @@
         "bench:realworld": "@php vendor/bin/phpbench run --group=realworld --report=default",
         "bench:internals": "@php vendor/bin/phpbench run --group=internals --report=default"
     },
-    "suggest": {
-        "symfony/polyfill-mbstring": "Install symfony/polyfill-mbstring if your environment lacks support for the mbstring extension"
+    "scripts-descriptions": {
+        "test": "Run the PHPUnit test suite.",
+        "test:coverage": "Run the test suite with code coverage (requires Xdebug or PCOV).",
+        "analyse": "Run PHPStan static analysis.",
+        "cs:check": "Check coding style without changing files.",
+        "cs:fix": "Fix coding style.",
+        "check": "Run coding style, static analysis and tests."
+    },
+    "extra": {
+        "branch-alias": {
+            "dev-main": "2.0.x-dev"
+        }
     }
 }

@@ -1,15 +1,10 @@
 parameters:
-    level: 6
+    level: max
     paths:
-        - %currentWorkingDirectory%/src/
-        - %currentWorkingDirectory%/tests/
+        - src
+        - tests
     excludePaths:
-        analyse:
-            - %currentWorkingDirectory%/tests/generate-fixtures.php
-            - %currentWorkingDirectory%/tests/Stale-Cases/
-            - %currentWorkingDirectory%/benchmarks/
-    propertyAlwaysWrittenTags:
-        - '@@set'
-    propertyAlwaysReadTags:
-        - '@@get'
+        - tests/generate-fixtures.php
+    # Public entry points validate their input at runtime even when PHPDoc
+    # already narrows the type (callers are not guaranteed to run PHPStan).
     treatPhpDocTypesAsCertain: false

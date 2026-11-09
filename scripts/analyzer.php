@@ -23,15 +23,8 @@ define('TD', rtrim(__DIR__, DS) . DS);
 define('SRC', realpath(TD . '..' . DS) . DS . 'src' . DS);
 define('DB_FILE', TD . 'analyzer.sqlite');
 
-// Manually load the SparseDigest classes
-require_once SRC . 'HashResult.php';
-require_once SRC . 'File.php';
-require_once SRC . 'HashingStrategy.php';
-require_once SRC . 'SparseHasher.php';
-require_once SRC . 'FileHasher.php';
-require_once SRC . 'Strategy/AbstractStrategy.php';
-require_once SRC . 'Strategy/SparseStrategy.php';
-require_once SRC . 'Strategy/FullStrategy.php';
+// Load the SparseDigest classes through the Composer autoloader
+require_once TD . '..' . DS . 'vendor' . DS . 'autoload.php';
 
 /**
  * Parse CLI options.
@@ -140,11 +133,11 @@ function main(array $options): void
     $pdo = openDatabase();
 
     // Load or retrieve the list of files from the file system
-    if (!is_file('analyzer.files')) {
+    if (!is_file(TD . 'analyzer.files')) {
         $files = enumerateFiles($options['dirs']);
-        file_put_contents('analyzer.files', serialize($files));
+        file_put_contents(TD . 'analyzer.files', serialize($files));
     } else {
-        $files = unserialize(file_get_contents('analyzer.files'));
+        $files = unserialize(file_get_contents(TD . 'analyzer.files'));
     }
 
     runHashPass($pdo, $files, 'sparse', 'Sparse-Hashing (pass 1)');

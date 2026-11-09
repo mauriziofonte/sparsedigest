@@ -1,10 +1,11 @@
 <?php
+
 declare(strict_types=1);
 
 namespace Mfonte\SparseDigest\Benchmarks;
 
-use Mfonte\SparseDigest\SparseHasher;
 use Mfonte\SparseDigest\File;
+use Mfonte\SparseDigest\SparseHasher;
 
 /**
  * Benchmark: SparseDigest vs hash_file()

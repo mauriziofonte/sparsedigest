@@ -1,8 +1,12 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Mfonte\SparseDigest\Strategy;
 
-use InvalidArgumentException;
+use Mfonte\SparseDigest\Exception\InvalidSamplingParameterException;
+use Mfonte\SparseDigest\Exception\RuntimeException;
+use Mfonte\SparseDigest\Exception\UnsupportedAlgorithmException;
 
 /**
  * AbstractStrategy - Base class for hashing strategies.
@@ -12,6 +16,17 @@ use InvalidArgumentException;
  */
 abstract class AbstractStrategy
 {
+    /**
+     * Algorithms in order of preference (fastest first).
+     *
+     * @var list<string>
+     */
+    public const PREFERRED_ALGORITHMS = [
+        'xxh3', 'xxh128', 'crc32c', 'xxh64', 'crc32', 'crc32b', 'murmur3f', 'xxh32',
+        'murmur3c', 'murmur3a', 'adler32', 'md4', 'fnv1a64', 'fnv132', 'fnv164', 'fnv1a32',
+        'joaat', 'md5', 'sha1', 'sha256',
+    ];
+
     /** @var string */
     protected $defaultAlgo;
 
@@ -51,51 +66,74 @@ abstract class AbstractStrategy
     /**
      * Wraps a callback to measure its execution time.
      *
-     * @param callable $callback
-     * @return mixed
+     * @template T
+     *
+     * @param callable(): T $callback
+     * @return T
      */
     protected function stopwatch(callable $callback)
     {
         $start = microtime(true);
-        $result = $callback();
-        $end = microtime(true);
-        $this->computeTime = ($end - $start) * 1000;
-        return $result;
+
+        try {
+            return $callback();
+        } finally {
+            $this->computeTime = (microtime(true) - $start) * 1000;
+        }
     }
 
     /**
      * Determines the best available hashing algorithm from a preferred list.
      *
      * @return string
+     * @throws RuntimeException if no hashing algorithm is available at all.
      */
     protected function determineBestAlgo(): string
     {
-        $preferred = [
-            'xxh3', 'xxh128', 'crc32c', 'xxh64', 'crc32', 'crc32b', 'murmur3f', 'xxh32',
-            'murmur3c', 'murmur3a', 'adler32', 'md4', 'fnv1a64', 'fnv132', 'fnv164', 'fnv1a32',
-            'joaat', 'md5', 'sha1', 'sha256'
-        ];
         $available = hash_algos();
-        foreach ($preferred as $algo) {
+        foreach (self::PREFERRED_ALGORITHMS as $algo) {
             if (in_array($algo, $available, true)) {
                 return $algo;
             }
         }
-        return reset($available);
+
+        $first = reset($available);
+        if ($first === false) {
+            throw new RuntimeException('No hashing algorithm is available in this PHP build.');
+        }
+
+        return $first;
     }
 
     /**
-     * Validates that the sample size is divisible by 64.
+     * Validates that the algorithm is supported by the hash extension.
+     *
+     * @param string $algo
+     * @return string
+     * @throws UnsupportedAlgorithmException
+     */
+    protected static function preventInvalidAlgorithm(string $algo): string
+    {
+        if (! in_array($algo, hash_algos(), true)) {
+            throw UnsupportedAlgorithmException::forAlgorithm($algo);
+        }
+
+        return $algo;
+    }
+
+    /**
+     * Validates that the sample size is a positive multiple of 64.
      *
      * @param int $sampleSize
      * @return int
-     * @throws InvalidArgumentException
+     * @throws InvalidSamplingParameterException
      */
     protected static function preventInvalidSampleSize(int $sampleSize): int
     {
-        if ($sampleSize % 64 !== 0) {
-            throw new InvalidArgumentException('Sample size must be divisible by 64.');
+        if ($sampleSize < 64 || $sampleSize % 64 !== 0) {
+            throw new InvalidSamplingParameterException("Sample size must be a positive integer divisible by 64, {$sampleSize} given.");
         }
+
         return $sampleSize;
     }
 
@@ -105,13 +143,14 @@ abstract class AbstractStrategy
      * @param int $coverage
      *
      * @return int
-     * @throws InvalidArgumentException
+     * @throws InvalidSamplingParameterException
      */
     protected static function preventInvalidCoverage(int $coverage): int
     {
         if ($coverage < 1 || $coverage > 100) {
-            throw new InvalidArgumentException('Coverage must be within the range [1, 100].');
+            throw new InvalidSamplingParameterException("Coverage must be within the range [1, 100], {$coverage} given.");
         }
+
         return $coverage;
     }
 }

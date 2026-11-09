@@ -1,13 +1,14 @@
 <?php
+
 declare(strict_types=1);
 
 namespace Mfonte\SparseDigest\Test\Unit\Cases;
 
-use Mfonte\SparseDigest\SparseHasher;
 use Mfonte\SparseDigest\File;
+use Mfonte\SparseDigest\FileHasher;
 use Mfonte\SparseDigest\HashResult;
+use Mfonte\SparseDigest\SparseHasher;
 use Mfonte\SparseDigest\Test\Unit\TestCase;
-use InvalidArgumentException;
 
 /**
  * Tests for edge cases in the SparseDigest library.
@@ -18,16 +19,19 @@ use InvalidArgumentException;
 class EdgeCasesTest extends TestCase
 {
     /**
-     * Test that empty files throw an exception.
-     * The library does not support empty files by design.
+     * Test that empty files are hashed as the digest of the empty string, with a full (non-sparse) hash.
      */
-    public function testEmptyFileThrowsException(): void
+    public function testEmptyFileIsHashedAsEmptyString(): void
     {
-        $this->expectException(InvalidArgumentException::class);
-        $this->expectExceptionMessage('does not exist or is empty');
-
         $tempFile = $this->createTempFileWithContents('');
-        SparseHasher::new($tempFile);
+
+        $sparse = SparseHasher::new($tempFile)->hashAs('sha256');
+        $full = FileHasher::new($tempFile)->hashAs('sha256');
+
+        $this->assertSame(hash('sha256', ''), $sparse->toHex());
+        $this->assertSame(hash('sha256', ''), $full->toHex());
+        $this->assertFalse($sparse->isSparse());
+        $this->assertTrue($sparse->equals($full));
     }
 
     /**
@@ -315,7 +319,7 @@ class EdgeCasesTest extends TestCase
         $file = File::new($tempFile);
 
         // At boundary, should be able to be sampled
-        $canSample = !$file->cantBeSampled($coverage, $sampleSize);
+        $canSample = ! $file->cantBeSampled($coverage, $sampleSize);
         $this->assertTrue($canSample);
 
         // Just below boundary

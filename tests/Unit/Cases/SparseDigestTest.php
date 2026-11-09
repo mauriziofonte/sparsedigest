@@ -1,12 +1,13 @@
 <?php
+
 declare(strict_types=1);
 
 namespace Mfonte\SparseDigest\Test\Unit\Cases;
 
-use Mfonte\SparseDigest\SparseHasher;
-use Mfonte\SparseDigest\HashResult;
-use Mfonte\SparseDigest\Test\Unit\TestCase;
 use InvalidArgumentException;
+use Mfonte\SparseDigest\HashResult;
+use Mfonte\SparseDigest\SparseHasher;
+use Mfonte\SparseDigest\Test\Unit\TestCase;
 use SplFileInfo;
 
 /**

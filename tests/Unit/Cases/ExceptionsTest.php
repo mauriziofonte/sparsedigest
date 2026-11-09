@@ -1,12 +1,13 @@
 <?php
+
 declare(strict_types=1);
 
 namespace Mfonte\SparseDigest\Test\Unit\Cases;
 
-use Mfonte\SparseDigest\SparseHasher;
-use Mfonte\SparseDigest\File;
-use Mfonte\SparseDigest\Test\Unit\TestCase;
 use InvalidArgumentException;
+use Mfonte\SparseDigest\File;
+use Mfonte\SparseDigest\SparseHasher;
+use Mfonte\SparseDigest\Test\Unit\TestCase;
 use RuntimeException;
 
 /**
@@ -92,11 +93,11 @@ class ExceptionsTest extends TestCase
 
     /**
      * Test that hashAs throws exception for invalid algorithm.
-     * Note: In PHP 8+, hash_file throws ValueError; our code may not catch it.
      */
     public function testHashAsThrowsForInvalidAlgorithm(): void
     {
-        $this->expectException(\Throwable::class);
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('Invalid hash algorithm');
 
         $tempFile = $this->createTempFileOfSize(10000, true);
         $sd = SparseHasher::new($tempFile);
@@ -105,11 +106,11 @@ class ExceptionsTest extends TestCase
 
     /**
      * Test that hashAs throws exception for empty algorithm string.
-     * Note: In PHP 8+, hash_file throws ValueError; our code may not catch it.
      */
     public function testHashAsThrowsForEmptyAlgorithm(): void
     {
-        $this->expectException(\Throwable::class);
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('Invalid hash algorithm');
 
         $tempFile = $this->createTempFileOfSize(10000, true);
         $sd = SparseHasher::new($tempFile);
@@ -253,9 +254,9 @@ class ExceptionsTest extends TestCase
      */
     public function testUnreadableFile(): void
     {
-        // Skip if running as root (root can read anything)
-        if (posix_getuid() === 0) {
-            $this->markTestSkipped('Cannot test file permissions when running as root');
+        // Skip on Windows (no POSIX permissions) or when running as root (root can read anything)
+        if (DIRECTORY_SEPARATOR === '\\' || (function_exists('posix_getuid') && posix_getuid() === 0)) {
+            $this->markTestSkipped('Cannot test file permissions on Windows or when running as root');
         }
 
         $tempFile = $this->createTempFileOfSize(1000, true);

@@ -1,4 +1,5 @@
 <?php
+
 declare(strict_types=1);
 
 namespace Mfonte\SparseDigest\Benchmarks;
@@ -123,7 +124,7 @@ abstract class AbstractBenchmark
      */
     private function registerCleanup(): void
     {
-        if (!self::$cleanupRegistered) {
+        if (! self::$cleanupRegistered) {
             register_shutdown_function(function (): void {
                 foreach (self::$tempFiles as $file) {
                     if (file_exists($file)) {
@@ -151,6 +152,7 @@ abstract class AbstractBenchmark
             $size /= 1024;
             $i++;
         }
+
         return round($size, 2) . ' ' . $units[$i];
     }
 }
